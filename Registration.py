@@ -4,7 +4,7 @@ from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
 from kivy.core.window import Window
-from kivy.uix.screenmanager import Screen, ScreenManager
+from kivy.uix.screenmanager import Screen
 
 
 class LoginScreen(Screen):
@@ -12,6 +12,9 @@ class LoginScreen(Screen):
 
     def __init__(self, **kwargs):
         super(LoginScreen, self).__init__(**kwargs)
+
+        # Initialize user database to store email and password
+        self.user_database = {}
 
         # Set layout properties
         layout = BoxLayout(orientation='vertical', spacing=10, padding=[50, 100, 50, 100])
@@ -24,7 +27,7 @@ class LoginScreen(Screen):
 
         # Title label
         title_label = Label(
-            text='Let\'s get you hired.',
+            text="Let's get you hired.",
             font_size=36,
             bold=True,
             color=(0, 0, 0, 1),  # Black text
@@ -49,7 +52,7 @@ class LoginScreen(Screen):
         email_label.bind(size=email_label.setter('text_size'))
 
         # Email input field
-        email_input = TextInput(
+        self.email_input = TextInput(
             hint_text='Email Address',
             multiline=False,
             size_hint_y=0.2
@@ -66,11 +69,18 @@ class LoginScreen(Screen):
         password_label.bind(size=password_label.setter('text_size'))
 
         # Password input field
-        password_input = TextInput(
+        self.password_input = TextInput(
             hint_text='Password',
             multiline=False,
             password=True,
             size_hint_y=0.2
+        )
+
+        # Error label for invalid login
+        self.error_label = Label(
+            text='',
+            color=(1, 0, 0, 1),  # Red text for errors
+            size_hint_y=0.1
         )
 
         # Forgot password button
@@ -88,6 +98,7 @@ class LoginScreen(Screen):
             color=(1, 1, 1, 1),
             size_hint_y=0.2
         )
+        sign_in_button.bind(on_press=self.check_credentials)
 
         # Create a horizontal layout for "Don't have an account?" and "Register" button
         register_layout = BoxLayout(orientation='horizontal', size_hint_y=0.1)
@@ -120,9 +131,10 @@ class LoginScreen(Screen):
         layout.add_widget(title_label)
         layout.add_widget(subtitle_label)
         layout.add_widget(email_label)
-        layout.add_widget(email_input)
+        layout.add_widget(self.email_input)
         layout.add_widget(password_label)
-        layout.add_widget(password_input)
+        layout.add_widget(self.password_input)
+        layout.add_widget(self.error_label)
         layout.add_widget(forgot_password_button)
         layout.add_widget(sign_in_button)
         layout.add_widget(register_layout)
@@ -130,7 +142,24 @@ class LoginScreen(Screen):
         # Add the layout to the screen
         self.add_widget(layout)
 
+    def check_credentials(self, instance):
+        """Check if the entered email and password match stored credentials."""
+        email = self.email_input.text.strip()
+        password = self.password_input.text.strip()
+
+        if not email or not password:
+            self.error_label.text = "Email or password cannot be empty."
+            return
+
+        if email in self.user_database and self.user_database[email] == password:
+            print("Login successful!")
+            self.error_label.text = ""  # Clear error message
+            self.manager.transition.direction = 'left'
+            self.manager.current = 'interested_field_screen'  # Navigate to the next screen
+        else:
+            self.error_label.text = "Incorrect email or password."
+
     def go_to_register(self, instance):
-        """Navigate to MainScreen."""
+        """Navigate to the registration screen."""
         self.manager.transition.direction = 'left'
         self.manager.current = 'main_screen'
