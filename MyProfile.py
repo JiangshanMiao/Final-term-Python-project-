@@ -9,6 +9,9 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 from kivy.graphics import Color, Rectangle
 from kivy.uix.screenmanager import Screen
+import tkinter as tk
+from tkinter import filedialog
+
 
 
 class MainScreen(Screen):
@@ -172,5 +175,39 @@ class MainScreen(Screen):
         self.manager.current = 'login_screen'
 
     def upload_photo(self, instance):
-        """Simulate photo upload functionality."""
-        print("Upload photo functionality not implemented.")
+        """Open file chooser to upload a photo."""
+        # Create a file chooser that filters for image files
+        filechooser = FileChooserListView(filters=['*.png', '*.jpg', '*.jpeg'])
+
+        # Create a popup to contain the file chooser
+        popup_content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        popup = Popup(title="Select Photo", content=popup_content, size_hint=(0.9, 0.9))
+
+        # Add the file chooser and close button to the popup
+        close_button = Button(text="Close", size_hint_y=None, height=40)
+        popup_content.add_widget(filechooser)
+        popup_content.add_widget(close_button)
+
+        # Bind the close button to dismiss the popup
+        close_button.bind(on_press=popup.dismiss)
+
+        # Bind the file selection callback
+        filechooser.bind(on_selection=lambda _, selection: self.select_photo(selection, popup))
+
+        # Open the popup
+        popup.open()
+
+    def upload_photo(self, instance):
+        """Open the system file manager to upload a photo."""
+
+        root = tk.Tk()
+        root.withdraw()
+
+        file_path = filedialog.askopenfilename(
+            title="Select Photo",
+            filetypes=[("Image Files", "*.png;*.jpg;*.jpeg"), ("All Files", "*.*")]
+        )
+
+        if file_path:
+            self.profile_image.source = file_path
+            print(f"Photo selected: {file_path}")
