@@ -6,7 +6,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.checkbox import CheckBox
 from kivy.uix.floatlayout import FloatLayout
-from kivy.graphics import Color, Rectangle, Line, Ellipse
+from kivy.graphics import Color, Rectangle, Line
 
 
 class JobRecommendationScreen(Screen):
@@ -16,6 +16,17 @@ class JobRecommendationScreen(Screen):
         super(JobRecommendationScreen, self).__init__(**kwargs)
         self.selected_tags = []  # Tags passed from InterestedFieldScreen
         self.checked_tags = []   # To track selected CheckBox tags
+        self.checked_jobs = []  # To track selected job CheckBoxes
+
+        # Example job data: title and detailed description
+        self.jobs_data = [
+            {"title": "Software Engineer", "details": "Develop and maintain software applications using Python and Kivy."},
+            {"title": "Data Scientist", "details": "Analyze data and build machine learning models for insights."},
+            {"title": "Web Developer", "details": "Create and maintain websites using HTML, CSS, and JavaScript."},
+            {"title": "Project Manager", "details": "Manage project timelines, resources, and deliverables."},
+            {"title": "UX Designer", "details": "Design user-friendly interfaces with a focus on user experience."}
+        ]
+
 
         # Root layout
         root_layout = BoxLayout(orientation='vertical', spacing=10, padding=10)
@@ -23,7 +34,6 @@ class JobRecommendationScreen(Screen):
         # === Header Layout (Top Section) === #
         header_layout = BoxLayout(orientation='horizontal', size_hint=(1, 0.1), spacing=20)
 
-        # Choose Your Title Button
         self.choose_title_button = Button(
             text="Choose Your Title",
             size_hint=(0.5, 1),
@@ -32,7 +42,6 @@ class JobRecommendationScreen(Screen):
         )
         header_layout.add_widget(self.choose_title_button)
 
-        # Filter Button
         self.filter_button = Button(
             text="Filter",
             size_hint=(0.2, 1),
@@ -40,7 +49,6 @@ class JobRecommendationScreen(Screen):
             on_press=self.open_filters
         )
         header_layout.add_widget(self.filter_button)
-
         root_layout.add_widget(header_layout)
 
         # === Content Layout (Middle Section) === #
@@ -74,6 +82,7 @@ class JobRecommendationScreen(Screen):
             halign='center',
             valign='middle'
         )
+        self.details_label.bind(size=lambda instance, value: setattr(instance, 'text_size', instance.size))
         right_box.add_widget(self.details_label)
         content_layout.add_widget(right_box)
 
@@ -82,15 +91,12 @@ class JobRecommendationScreen(Screen):
         # === Footer Layout (Bottom Section) === #
         footer_layout = BoxLayout(orientation='horizontal', size_hint=(1, 0.1), spacing=20)
 
-        # Back Button
         back_button = Button(
             text="Back",
             size_hint=(0.5, 1),
             font_size=18,
             on_press=self.go_back
         )
-
-        # Apply Button
         apply_button = Button(
             text="Apply",
             size_hint=(0.5, 1),
@@ -104,24 +110,52 @@ class JobRecommendationScreen(Screen):
         footer_layout.add_widget(apply_button)
         root_layout.add_widget(footer_layout)
 
-        # Add everything to the screen
         self.add_widget(root_layout)
-
-        # Create the floating window for tags
         self.create_floating_window()
+        self.populate_job_list()
 
-    # === Border Update Methods === #
-    def update_left_border(self, instance, value):
-        self.left_border.rectangle = (instance.x, instance.y, instance.width, instance.height)
+    def load_selected_tags(self, tags):
+        """Load tags passed from InterestedFieldScreen."""
+        self.selected_tags = tags
+        print("Loaded Tags:", self.selected_tags)
 
-    def update_right_border(self, instance, value):
-        self.right_border.rectangle = (instance.x, instance.y, instance.width, instance.height)
+    # === Job List Population === #
+    def populate_job_list(self):
+        """Populate the job list in the left section with job titles and CheckBoxes."""
+        self.job_grid.clear_widgets()
+        for job in self.jobs_data:
+            job_box = BoxLayout(orientation='horizontal', size_hint_y=None, height=60)
+
+            # Add CheckBox for job selection
+            checkbox = CheckBox(size_hint=(0.2, 1))
+            checkbox.bind(active=lambda checkbox, state, j=job["title"]: self.toggle_job_selection(j, state))
+
+            # Job Button to show details
+            job_button = Button(
+                text=job["title"],
+                size_hint=(0.8, 1),
+                font_size=16,
+                color=(0, 0, 0, 1),
+                background_normal='',
+                background_color=(0.9, 0.9, 0.9, 1)
+            )
+            job_button.bind(on_press=lambda instance, j=job: self.show_job_details(j))
+
+            # Add CheckBox and Button to job_box
+            job_box.add_widget(checkbox)
+            job_box.add_widget(job_button)
+
+            # Add job_box to job_grid
+            self.job_grid.add_widget(job_box)
+
+    def show_job_details(self, job):
+        """Display the selected job's details on the right side."""
+        self.details_label.text = f"[b]{job['title']}[/b]\n\n{job['details']}"
+        self.details_label.markup = True
 
     # === Floating Window === #
     def create_floating_window(self):
-        """Create a floating window with CheckBoxes for tags."""
         self.floating_window = FloatLayout(size_hint=(1, 1))
-
         self.floating_window_window = BoxLayout(
             orientation='vertical',
             size_hint=(0.6, 0.6),
@@ -129,99 +163,88 @@ class JobRecommendationScreen(Screen):
             padding=20,
             spacing=10
         )
-
-        # Gray background
         with self.floating_window_window.canvas.before:
             Color(0.7, 0.7, 0.7, 0.95)
             self.bg_rect = Rectangle(size=self.floating_window_window.size, pos=self.floating_window_window.pos)
         self.floating_window_window.bind(size=self.update_rect, pos=self.update_rect)
 
-        # Title
         self.floating_window_window.add_widget(Label(
-            text="Select Your Tags",
-            font_size=20,
-            bold=True,
-            color=(0, 0, 0, 1),
-            size_hint_y=None,
-            height=40
+            text="Select Your Tags", font_size=20, bold=True, color=(0, 0, 0, 1),
+            size_hint_y=None, height=40
         ))
-
-        # GridLayout for CheckBoxes
+        scroll_view = ScrollView(size_hint=(1, 0.8))
         self.checkbox_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
         self.checkbox_layout.bind(minimum_height=self.checkbox_layout.setter('height'))
-
-        scroll_view = ScrollView(size_hint=(1, 0.8))
         scroll_view.add_widget(self.checkbox_layout)
         self.floating_window_window.add_widget(scroll_view)
 
-        # Close Button
         close_button = Button(
-            text="Ok",
-            size_hint_y=None,
-            height=50,
-            font_size=18,
+            text="Ok", size_hint_y=None, height=50, font_size=18,
             on_press=lambda x: self.remove_widget(self.floating_window)
         )
         self.floating_window_window.add_widget(close_button)
-
         self.floating_window.add_widget(self.floating_window_window)
 
     def open_floating_window(self, instance):
-        """Open floating window with CheckBoxes for selected tags."""
         self.checkbox_layout.clear_widgets()
-        self.checked_tags = []
-
         for tag in self.selected_tags:
             tag_box = BoxLayout(orientation='horizontal', size_hint_y=None, height=40)
 
-            # Custom CheckBox with border for visibility
-            checkbox = CheckBox(size_hint=(0.2, 1))
+            # Enhanced CheckBox with visual improvements
+            checkbox = CheckBox(
+                size_hint=(0.2, 1),
+                background_checkbox_normal='',
+                background_checkbox_down='atlas://data/images/defaulttheme/checkbox_on',
+                color=(0.5, 0.5, 0.6, 1)  # Set a visually clear blue checkmark color
+            )
             checkbox.bind(active=lambda checkbox, state, t=tag: self.toggle_tag_selection(t, state))
 
-            # Add canvas instructions for visibility
-            with checkbox.canvas.before:
-                Color(0.3, 0.3, 0.3, 1)  # Gray border color
-                checkbox.outline_rect = Rectangle(size=checkbox.size, pos=checkbox.pos)
-            checkbox.bind(size=self.update_checkbox_rect, pos=self.update_checkbox_rect)
-
-            tag_label = Label(text=tag, size_hint=(0.8, 1), font_size=16, color=(0, 0, 0, 1))
+            # Add the label for the tag
+            tag_label = Label(
+                text=tag,
+                size_hint=(0.8, 1),
+                font_size=16,
+                color=(0, 0, 0, 1)
+            )
             tag_box.add_widget(checkbox)
             tag_box.add_widget(tag_label)
             self.checkbox_layout.add_widget(tag_box)
 
+        # Ensure floating window is displayed
         self.add_widget(self.floating_window)
 
-    def update_checkbox_rect(self, instance, value):
-        """Update the border rectangle for the CheckBox."""
-        instance.outline_rect.size = instance.size
-        instance.outline_rect.pos = instance.pos
-
     def toggle_tag_selection(self, tag, state):
-        """Track selected tags based on CheckBox states."""
-        if state:
+        if state and tag not in self.checked_tags:
             self.checked_tags.append(tag)
-        else:
-            if tag in self.checked_tags:
-                self.checked_tags.remove(tag)
+        elif not state and tag in self.checked_tags:
+            self.checked_tags.remove(tag)
 
     def apply_selected_tags(self, instance):
-        """Apply selected tags."""
+        """Apply selected tags and selected jobs."""
         print("Selected Tags to Apply:", self.checked_tags)
+        print("Selected Jobs to Apply:", self.checked_jobs)
+
+    def update_left_border(self, instance, value):
+        self.left_border.rectangle = (instance.x, instance.y, instance.width, instance.height)
+
+    def update_right_border(self, instance, value):
+        self.right_border.rectangle = (instance.x, instance.y, instance.width, instance.height)
 
     def update_rect(self, instance, value):
         self.bg_rect.size = instance.size
         self.bg_rect.pos = instance.pos
 
-    def load_selected_tags(self, tags):
-        """Load tags passed from InterestedFieldScreen."""
-        self.selected_tags = tags
-        print("Loaded Tags:", self.selected_tags)
-
-    def open_filters(self, instance):
-        """Placeholder for filter functionality."""
-        print("Filter button pressed!")
+    def toggle_job_selection(self, job_title, state):
+        """Track selected job titles based on CheckBox states."""
+        if state and job_title not in self.checked_jobs:
+            self.checked_jobs.append(job_title)
+        elif not state and job_title in self.checked_jobs:
+            self.checked_jobs.remove(job_title)
 
     def go_back(self, instance):
-        """Navigate back to InterestedFieldScreen."""
         self.manager.transition.direction = 'right'
         self.manager.current = 'interested_field_screen'
+
+    def open_filters(self, instance):
+        print("Filter button pressed!")
+
