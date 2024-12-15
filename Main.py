@@ -3,6 +3,7 @@ from kivy.uix.screenmanager import ScreenManager
 from Registration import LoginScreen  # Import LoginScreen from Registration.py
 from MyProfile import MainScreen  # Import MainScreen from MyProfile.py
 from WorkExperience import WorkExperienceScreen  # Import WorkExperienceScreen from WorkExperience.py
+#from Draft import InterestedFieldScreen
 from JobRecommendation import JobRecommendationScreen
 from InterestedField import InterestedFieldScreen
 class MainApp(App):
