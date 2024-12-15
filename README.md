@@ -62,7 +62,7 @@ The application interacts with a **MongoDB database** to fetch and store job-rel
 ├── Registration.py           # Login and registration screen
 ├── WorkExperience.py         # Screen for adding work experience
 ├── MyProfile.py              # Screen to manage user profile details
-└── Project 2.pdf             # Project guidelines document
+
 ```
 
 ---
