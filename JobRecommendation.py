@@ -13,7 +13,15 @@ import seaborn as sns
 from kivy.uix.image import Image
 from io import BytesIO
 from kivy.core.image import Image as CoreImage
-
+from pymongo import MongoClient
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+import pandas as pd
+import numpy as np
+from apify_client import ApifyClient
+from datetime import datetime
+from pymongo import MongoClient
+import webbrowser
 
 
 class JobRecommendationScreen(Screen):
@@ -27,68 +35,82 @@ class JobRecommendationScreen(Screen):
 
 
         # Example job data: title and detailed description
-        self.jobs_data = [
-            {
-                "title": "Senior Java Full Stack Developer",
-                "details": (
-                    "Company: Cognizant\n"
-                    "Salary: $68,422 - $114,000 a year\n"
-                    "Location: San Francisco, CA\n"
-                    "Job Type: Full-time\n\n"
-                    "Description:\n"
-                    "Cognizant Digital Practice helps clients reinvent products, experiences, and business models "
-                    "to build new value, differentiation, and drive revenue in the digital economy. "
-                    "Responsibilities include developing and automating business solutions, hands-on coding, "
-                    "participation in Agile ceremonies, and collaboration with global teams.\n\n"
-                    "Qualifications:\n"
-                    "- Proficiency in JavaScript frameworks (React, NextJS, Angular)\n"
-                    "- Experience with REST services, GraphQL, Microservices, and cloud environments\n"
-                    "- Familiarity with Kubernetes, Docker, CI/CD pipelines, and Agile/Scrum methodologies\n\n"
-                    "Posted At: Just posted\n"
-                    "Rating: 3.8\n"
-                    "Apply Here: https://www.indeed.com/viewjob?jk=12654c15082c8563"
-                )
-            },
-            {
-                "title": "Another Job Example",
-                "details": (
-                    "Company: ExampleCorp\n"
-                    "Salary: $50,000 - $90,000 per year\n"
-                    "Location: Remote\n"
-                    "Job Type: Contract\n\n"
-                    "Description:\n"
-                    "ExampleCorp is looking for a Python Developer to build scalable web applications and work "
-                    "on data pipelines. The role includes writing clean code, unit tests, and collaborating with "
-                    "cross-functional teams.\n\n"
-                    "Qualifications:\n"
-                    "- Experience with Python, Flask/Django, and REST APIs\n"
-                    "- Understanding of relational databases (e.g., PostgreSQL)\n"
-                    "- Familiarity with Git, CI/CD tools, and cloud platforms\n\n"
-                    "Posted At: 3 days ago\n"
-                    "Rating: 4.2\n"
-                    "Apply Here: https://www.example.com/apply/12345"
-                )
-            },
-            {
-                "title": "Junior Frontend Developer",
-                "details": (
-                    "Company: StartUpCo\n"
-                    "Salary: $40,000 - $60,000 annually\n"
-                    "Location: New York, NY\n"
-                    "Job Type: Full-time\n\n"
-                    "Description:\n"
-                    "StartUpCo seeks a Junior Frontend Developer to join a fast-paced team. The position requires "
-                    "working with modern JavaScript frameworks, HTML/CSS, and collaborating on design prototypes.\n\n"
-                    "Qualifications:\n"
-                    "- Knowledge of HTML, CSS, JavaScript\n"
-                    "- Familiarity with frameworks like React or Vue.js\n"
-                    "- Strong problem-solving and communication skills\n\n"
-                    "Posted At: 1 week ago\n"
-                    "Rating: 4.0\n"
-                    "Apply Here: https://www.startupco.com/careers/frontend"
-                )
-            }
+        '''self.jobs_data = [
+            {"title": "Software1111 Engineer", "details": "Develop and maintain software applications using Python and Kivy."},
+            {"title": "Data Scientist", "details": "Analyze data and build machine learning models for insights."},
+            {"title": "AI & Machine Learning", "details": "Create and maintain websites using HTML, CSS, and JavaScript."},
+            {"title": "Project Manager", "details": "Manage project timelines, resources, and deliverables."},
+            {"title": "UX Designer", "details": "Design user-friendly interfaces with a focus on user experience."}
+        ]'''
+        # === Connect to MongoDB and Fetch Job Data === #
+        uri = "mongodb+srv://pvyas1:A23ViuMWmUWxZ4e3@joblistings.ewq53.mongodb.net/?retryWrites=true&w=majority&appName=JobListings"
+        client = MongoClient(uri)
+        db = client['job_database']  # Replace with your actual database name
+        collection = db['Job_Listings']  # Replace with your actual collection name
+
+        # Fetch all job data from MongoDB
+        cursor = collection.find()
+        documents = list(cursor)
+
+        # Convert the MongoDB documents into a pandas DataFrame
+        df = pd.DataFrame(documents)
+
+        # Predefined list of banners (categories)
+        banners = [
+            "Aerospace Engineering", "AI & Machine Learning", "Architecture & Civil Engineering",
+            "Data & Analytics", "Developer Relations", "DevOps & Infrastructure",
+            "Electrical Engineering", "Engineering Management", "Hardware Engineering",
+            "IT & Security", "Mechanical Engineering", "QA & Testing", "Quantitative Finance",
+            "Sales & Solution Engineering", "Software Engineering", "Accounting", "Business & Strategy",
+            "Consulting", "Finance & Banking", "Growth & Marketing", "Operations & Logistics", "Product",
+            "Real Estate", "Sales & Account Management", "Art, Graphics & Animation", "Content & Writing",
+            "Journalism", "Social Media", "UI/UX & Design", "Administrative & Executive Assistance",
+            "Clerical & Data Entry", "Customer Success & Support", "Legal & Compliance", "People & HR",
+            "Biology & Biotech", "Lab & Research", "Medical, Clinical & Veterinary"
         ]
+
+        # === Process and Clean the Job Titles === #
+        # Clean the job titles (lowercase and remove special characters)
+        df['cleaned_titles'] = df['positionName'].str.lower().str.replace(r"[^a-zA-Z0-9 ]", "", regex=True)
+
+        # Load a pre-trained SentenceTransformer model to calculate embeddings
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+
+        # Generate embeddings for banners and job titles
+        banner_embeddings = model.encode(banners)
+        title_embeddings = model.encode(df['cleaned_titles'].tolist())
+
+        # Compute cosine similarity between titles and banners to assign banners
+        assigned_banners = []
+        for embedding in title_embeddings:
+            similarities = cosine_similarity([embedding], banner_embeddings)
+            best_match_idx = np.argmax(similarities)
+            assigned_banners.append(banners[best_match_idx])
+
+        # Add the assigned banners to the DataFrame
+        df['assigned_banner'] = assigned_banners
+
+        if 'external_apply_link' not in df.columns:
+            print("Warning: 'external_apply_link' column not found. Assigning default values.")
+            df['external_apply_link'] = None
+
+        # === Convert DataFrame to UI-Friendly Format === #
+        # Format jobs_data to be used by the UI
+        self.jobs_data = [
+           # {"title": row['positionName'], "details": row['description'], "assigned_banner": row['assigned_banner']}
+            {"title": row['positionName'],
+                    "Company": row['company'],
+                    "Salary": row['salary'],
+                    "Location": row['location'],
+                    "Description":row['description'],
+                    "Rating": row['rating'],
+                    "Apply Here": row['external_apply_link'],
+                    "Job_ID":row['id'],
+                    "assigned_banner": row['assigned_banner']
+                }
+            for _, row in df.iterrows()
+        ]
+
 
 
         # Root layout
@@ -134,22 +156,39 @@ class JobRecommendationScreen(Screen):
 
         # Right Section: Job Details
         right_box = BoxLayout(orientation='vertical', padding=5, spacing=10, size_hint=(0.6, 1))
+
+        # Black border for visual clarity
         with right_box.canvas.before:
             Color(0, 0, 0, 1)  # Black border
             self.right_border = Line(rectangle=(0, 0, right_box.width, right_box.height), width=2)
         right_box.bind(size=self.update_right_border, pos=self.update_right_border)
 
+        # Add ScrollView to enable scrolling
+        details_scroll = ScrollView(size_hint=(1, 1))  # ScrollView fills the entire right section
+
+        # Create a Label for job details
         self.details_label = Label(
             text="Select a job to see details here.",
             font_size=16,
             color=(0, 0, 0, 1),
-            halign='center',
-            valign='middle'
+            halign='left',  # Align text to the left
+            valign='top',  # Start text from the top
+            size_hint_y=None,  # Height adjusts dynamically based on content
+            text_size=(details_scroll.width, None)  # Initial width adjustment
         )
-        self.details_label.bind(size=lambda instance, value: setattr(instance, 'text_size', instance.size))
-        right_box.add_widget(self.details_label)
-        content_layout.add_widget(right_box)
 
+        # Dynamically bind text_size to ScrollView width
+        details_scroll.bind(
+            width=lambda instance, value: setattr(self.details_label, 'text_size', (value, None))
+        )
+
+        # Bind texture_size to adjust Label height dynamically
+        self.details_label.bind(texture_size=lambda instance, value: setattr(instance, 'height', value[1]))
+
+        # Add Label to ScrollView
+        details_scroll.add_widget(self.details_label)
+        right_box.add_widget(details_scroll)
+        content_layout.add_widget(right_box)
         root_layout.add_widget(content_layout)
 
         # === Footer Layout (Bottom Section) === #
@@ -225,7 +264,8 @@ class JobRecommendationScreen(Screen):
 
             # Add a CheckBox to allow job selection
             checkbox = CheckBox(size_hint=(0.2, 1))
-            checkbox.bind(active=lambda checkbox, state, j=job["title"]: self.toggle_job_selection(j, state))
+            # Bind the CheckBox to the toggle_job_selection method with the Job_ID
+            checkbox.bind(active=lambda checkbox, state, j=job["Job_ID"]: self.toggle_job_selection(j, state))
 
             # Add a button to display the job title
             job_button = Button(
@@ -248,7 +288,19 @@ class JobRecommendationScreen(Screen):
 
     def show_job_details(self, job):
         """Display the selected job's details on the right side."""
-        self.details_label.text = f"[b]{job['title']}[/b]\n\n{job['details']}"
+        """Display the selected job's structured details on the right side."""
+        print(job)
+        details_text = (
+            f"Title: {job.get('title', 'N/A')}[/b]\n\n"
+            f"Company: {job.get('Company', 'N/A')}\n"
+            f"Salary: {job.get('Salary', 'N/A')}\n"
+            f"Location: {job.get('Location', 'N/A')}\n"
+            f"Description:\n{job.get('Description', 'N/A')}\n\n"
+            f"Rating: {job.get('Rating', 'N/A')}\n\n"
+            f"[ref=link]Apply Here[/ref]"
+
+        )
+        self.details_label.text = details_text
         self.details_label.markup = True
 
     # === Floating Window === #
@@ -331,6 +383,26 @@ class JobRecommendationScreen(Screen):
         """Apply selected tags and selected jobs."""
         print("Selected Tags to Apply:", self.checked_tags)
         print("Selected Jobs to Apply:", self.checked_jobs)
+        # Connect to MongoDB (replace with your MongoDB connection string)
+        mongo_client = MongoClient(
+            'mongodb+srv://pvyas1:A23ViuMWmUWxZ4e3@joblistings.ewq53.mongodb.net/?retryWrites=true&w=majority&appName=JobListings')
+        db = mongo_client["job_database"]
+        collection = db["Job_Listings"]
+
+
+        # Loop through self.checked_jobs and match with MongoDB data
+        for job_id in self.checked_jobs:
+            # Find the document with the matching id
+            job_data = collection.find_one({"id": job_id}, {"_id": 0, "url": 1})
+            if job_data:
+                url = job_data.get('url')
+                if url:
+                    webbrowser.open_new_tab(url)
+                    print(f"Opened URL for Job_ID: {job_id}")
+                else:
+                    print(f"No URL found for Job_ID: {job_id}")
+            else:
+                print(f"No job found in database for Job_ID: {job_id}")
 
     def update_left_border(self, instance, value):
         self.left_border.rectangle = (instance.x, instance.y, instance.width, instance.height)
@@ -342,12 +414,12 @@ class JobRecommendationScreen(Screen):
         self.bg_rect.size = instance.size
         self.bg_rect.pos = instance.pos
 
-    def toggle_job_selection(self, job_title, state):
+    def toggle_job_selection(self, job_id, state):
         """Track selected job titles based on CheckBox states."""
-        if state and job_title not in self.checked_jobs:
-            self.checked_jobs.append(job_title)
-        elif not state and job_title in self.checked_jobs:
-            self.checked_jobs.remove(job_title)
+        if state and job_id not in self.checked_jobs:
+            self.checked_jobs.append(job_id)
+        elif not state and job_id in self.checked_jobs:
+            self.checked_jobs.remove(job_id)
 
     def go_back(self, instance):
         self.manager.transition.direction = 'right'
@@ -357,8 +429,139 @@ class JobRecommendationScreen(Screen):
         """
         Filter button does nothing.
         """
-        self.populate_job_list(filtered=False)
         print("Filter button clicked")
+        # Initialize the ApifyClient with your API token
+
+        for job_tags in self.checked_tags:
+            client = ApifyClient("apify_api_gqVfqJ8JBUJJeFUOEvth89b1DT2kSw4svR1a")
+            print(f'getting data f0r : {job_tags}')
+            # Prepare the Actor input
+            run_input = {
+                "position": job_tags,
+                "country": "US",
+                "location": "San Francisco",
+                "maxItems": 20,
+                "parseCompanyDetails": False,
+                "saveOnlyUniqueItems": True,
+                "followApplyRedirects": False,
+            }
+
+            # Run the Actor and wait for it to finish
+            run = client.actor("hMvNSpz3JnHgl5jkh").call(run_input=run_input)
+
+            # Fetch Actor results from the run's dataset
+            items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+            df = pd.DataFrame(items)
+            # List of columns to keep
+            columns_to_keep = [
+                "positionName",
+                "salary",
+                "jobType",
+                "company",
+                "location",
+                "rating",
+                "url",
+                "id",
+                "postedAt",
+                "scrapedAt",
+                "description",
+                "externalApplyLink",
+            ]
+
+            # Keep only the specified columns (if they exist)
+            df = df[[col for col in columns_to_keep if col in df.columns]]
+
+            # Convert the DataFrame to a list of dictionaries
+            data_dict = df.to_dict(orient="records")
+
+            # Display the resulting DataFrame
+            df.head()
+
+            # Convert the DataFrame to a list of dictionaries
+            data_dict = df.to_dict(orient="records")
+
+            # Connect to MongoDB (local instance)
+            client = MongoClient(
+                'mongodb+srv://pvyas1:A23ViuMWmUWxZ4e3@joblistings.ewq53.mongodb.net/?retryWrites=true&w=majority&appName=JobListings')
+
+            # Access the 'job_database' database and the 'Job_Listings' collection
+            db = client["job_database"]
+            collection = db["Job_Listings"]
+
+            # Insert the data into the collection
+            collection.insert_many(data_dict)
+
+            # Query and display the inserted data
+            for doc in collection.find():
+                print(doc)
+
+        uri = "mongodb+srv://pvyas1:A23ViuMWmUWxZ4e3@joblistings.ewq53.mongodb.net/?retryWrites=true&w=majority&appName=JobListings"
+        client = MongoClient(uri)
+        db = client['job_database']  # Replace with your actual database name
+        collection = db['Job_Listings']  # Replace with your actual collection name
+
+        # Fetch all job data from MongoDB
+        cursor = collection.find()
+        documents = list(cursor)
+
+        # Convert the MongoDB documents into a pandas DataFrame
+        df = pd.DataFrame(documents)
+
+        # Predefined list of banners (categories)
+        banners = [
+            "Aerospace Engineering", "AI & Machine Learning", "Architecture & Civil Engineering",
+            "Data & Analytics", "Developer Relations", "DevOps & Infrastructure",
+            "Electrical Engineering", "Engineering Management", "Hardware Engineering",
+            "IT & Security", "Mechanical Engineering", "QA & Testing", "Quantitative Finance",
+            "Sales & Solution Engineering", "Software Engineering", "Accounting", "Business & Strategy",
+            "Consulting", "Finance & Banking", "Growth & Marketing", "Operations & Logistics", "Product",
+            "Real Estate", "Sales & Account Management", "Art, Graphics & Animation", "Content & Writing",
+            "Journalism", "Social Media", "UI/UX & Design", "Administrative & Executive Assistance",
+            "Clerical & Data Entry", "Customer Success & Support", "Legal & Compliance", "People & HR",
+            "Biology & Biotech", "Lab & Research", "Medical, Clinical & Veterinary"
+        ]
+
+        # === Process and Clean the Job Titles === #
+        # Clean the job titles (lowercase and remove special characters)
+        df['cleaned_titles'] = df['positionName'].str.lower().str.replace(r"[^a-zA-Z0-9 ]", "", regex=True)
+
+        # Load a pre-trained SentenceTransformer model to calculate embeddings
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+
+        # Generate embeddings for banners and job titles
+        banner_embeddings = model.encode(banners)
+        title_embeddings = model.encode(df['cleaned_titles'].tolist())
+
+        # Compute cosine similarity between titles and banners to assign banners
+        assigned_banners = []
+        for embedding in title_embeddings:
+            similarities = cosine_similarity([embedding], banner_embeddings)
+            best_match_idx = np.argmax(similarities)
+            assigned_banners.append(banners[best_match_idx])
+
+        # Add the assigned banners to the DataFrame
+        df['assigned_banner'] = assigned_banners
+        if 'external_apply_link' not in df.columns:
+            print("Warning: 'external_apply_link' column not found. Assigning default values.")
+            df['external_apply_link'] = None
+
+        # === Convert DataFrame to UI-Friendly Format === #
+        # Format jobs_data to be used by the UI
+        self.jobs_data = [
+            {"title": row['positionName'],
+             "Company": row['company'],
+             "Salary": row['salary'],
+             "Location": row['location'],
+             "Description": row['description'],
+             "Rating": row['rating'],
+             "Apply Here": row['external_apply_link'],
+             "Job_ID": row['id'],
+             "assigned_banner": row['assigned_banner']
+             }
+            for _, row in df.iterrows()
+        ]
+
+        self.populate_job_list(filtered=False)
 
     def select_OK(self):
         """
@@ -385,25 +588,17 @@ class JobRecommendationScreen(Screen):
 
             # Step 3: Filter jobs based on checked tags
             for job in self.jobs_data:
-                job_title = re.sub(r'[^a-z0-9]', ' ', job['title'].lower())
+                job_title = re.sub(r'[^a-z0-9]', ' ', job['assigned_banner'].lower())
                 if any(tag in job_title for tag in normalized_tags):
                     filtered_jobs.append(job)
 
             # Step 4: Update filtered job list or show "No Results"
-            self.filtered_jobs_data = filtered_jobs if filtered_jobs else [{"title": "No Results", "details": ""}]
+            self.filtered_jobs_data = filtered_jobs if filtered_jobs else [{"assigned_banner": "No Results", "Description": ""}]
             self.populate_job_list(filtered=True)
 
         # Close the floating window
         self.remove_widget(self.floating_window)
 
-    # Modify apply_selected_tags method
-    def apply_selected_tags(self, instance):
-        """
-        Print the selected tags and jobs to the console.
-        This method does not show any floating windows.
-        """
-        print("Selected Tags to Apply:", self.checked_tags)
-        print("Selected Jobs to Apply:", self.checked_jobs)
 
     # Analysis Bottom
     def create_analysis_window(self, instance=None):
@@ -431,7 +626,7 @@ class JobRecommendationScreen(Screen):
 
         # Step 1: Extract job titles for analysis
         import pandas as pd
-        job_titles = [job['title'] for job in self.jobs_data]
+        job_titles = [job['assigned_banner'] for job in self.jobs_data]
 
         # Create a DataFrame where each job title is counted
         df = pd.DataFrame({'Job Title': job_titles})
@@ -465,6 +660,71 @@ class JobRecommendationScreen(Screen):
         Generate a bar chart showing the count of each job title.
         Returns the chart as a Kivy Image widget.
         """
+        uri = "mongodb+srv://pvyas1:A23ViuMWmUWxZ4e3@joblistings.ewq53.mongodb.net/?retryWrites=true&w=majority&appName=JobListings"
+        client = MongoClient(uri)
+        db = client['job_database']  # Replace with your actual database name
+        collection = db['Job_Listings']  # Replace with your actual collection name
+
+        # Fetch all job data from MongoDB
+        cursor = collection.find()
+        documents = list(cursor)
+
+        # Convert the MongoDB documents into a pandas DataFrame
+        df = pd.DataFrame(documents)
+
+        # Predefined list of banners (categories)
+        banners = [
+            "Aerospace Engineering", "AI & Machine Learning", "Architecture & Civil Engineering",
+            "Data & Analytics", "Developer Relations", "DevOps & Infrastructure",
+            "Electrical Engineering", "Engineering Management", "Hardware Engineering",
+            "IT & Security", "Mechanical Engineering", "QA & Testing", "Quantitative Finance",
+            "Sales & Solution Engineering", "Software Engineering", "Accounting", "Business & Strategy",
+            "Consulting", "Finance & Banking", "Growth & Marketing", "Operations & Logistics", "Product",
+            "Real Estate", "Sales & Account Management", "Art, Graphics & Animation", "Content & Writing",
+            "Journalism", "Social Media", "UI/UX & Design", "Administrative & Executive Assistance",
+            "Clerical & Data Entry", "Customer Success & Support", "Legal & Compliance", "People & HR",
+            "Biology & Biotech", "Lab & Research", "Medical, Clinical & Veterinary"
+        ]
+
+        # === Process and Clean the Job Titles === #
+        # Clean the job titles (lowercase and remove special characters)
+        df['cleaned_titles'] = df['positionName'].str.lower().str.replace(r"[^a-zA-Z0-9 ]", "", regex=True)
+
+        # Load a pre-trained SentenceTransformer model to calculate embeddings
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+
+        # Generate embeddings for banners and job titles
+        banner_embeddings = model.encode(banners)
+        title_embeddings = model.encode(df['cleaned_titles'].tolist())
+
+        # Compute cosine similarity between titles and banners to assign banners
+        assigned_banners = []
+        for embedding in title_embeddings:
+            similarities = cosine_similarity([embedding], banner_embeddings)
+            best_match_idx = np.argmax(similarities)
+            assigned_banners.append(banners[best_match_idx])
+
+        # Add the assigned banners to the DataFrame
+        df['assigned_banner'] = assigned_banners
+        if 'external_apply_link' not in df.columns:
+            print("Warning: 'external_apply_link' column not found. Assigning default values.")
+            df['external_apply_link'] = None
+
+        # === Convert DataFrame to UI-Friendly Format === #
+        # Format jobs_data to be used by the UI
+        self.jobs_data = [
+            {"title": row['positionName'],
+             "Company": row['company'],
+             "Salary": row['salary'],
+             "Location": row['location'],
+             "Description": row['description'],
+             "Rating": row['rating'],
+             "Apply Here": row['external_apply_link'],
+             "Job_ID": row['id'],
+             "assigned_banner": row['assigned_banner']
+             }
+            for _, row in df.iterrows()
+        ]
         # Create the bar chart
         plt.figure(figsize=(6, 4))
         sns.barplot(x=title_counts.values, y=title_counts.index, palette="viridis")
@@ -485,6 +745,72 @@ class JobRecommendationScreen(Screen):
         Generate a pie chart showing the proportion of job titles.
         Returns the chart as a Kivy Image widget.
         """
+        uri = "mongodb+srv://pvyas1:A23ViuMWmUWxZ4e3@joblistings.ewq53.mongodb.net/?retryWrites=true&w=majority&appName=JobListings"
+        client = MongoClient(uri)
+        db = client['job_database']  # Replace with your actual database name
+        collection = db['Job_Listings']  # Replace with your actual collection name
+
+        # Fetch all job data from MongoDB
+        cursor = collection.find()
+        documents = list(cursor)
+
+        # Convert the MongoDB documents into a pandas DataFrame
+        df = pd.DataFrame(documents)
+
+        # Predefined list of banners (categories)
+        banners = [
+            "Aerospace Engineering", "AI & Machine Learning", "Architecture & Civil Engineering",
+            "Data & Analytics", "Developer Relations", "DevOps & Infrastructure",
+            "Electrical Engineering", "Engineering Management", "Hardware Engineering",
+            "IT & Security", "Mechanical Engineering", "QA & Testing", "Quantitative Finance",
+            "Sales & Solution Engineering", "Software Engineering", "Accounting", "Business & Strategy",
+            "Consulting", "Finance & Banking", "Growth & Marketing", "Operations & Logistics", "Product",
+            "Real Estate", "Sales & Account Management", "Art, Graphics & Animation", "Content & Writing",
+            "Journalism", "Social Media", "UI/UX & Design", "Administrative & Executive Assistance",
+            "Clerical & Data Entry", "Customer Success & Support", "Legal & Compliance", "People & HR",
+            "Biology & Biotech", "Lab & Research", "Medical, Clinical & Veterinary"
+        ]
+
+        # === Process and Clean the Job Titles === #
+        # Clean the job titles (lowercase and remove special characters)
+        df['cleaned_titles'] = df['positionName'].str.lower().str.replace(r"[^a-zA-Z0-9 ]", "", regex=True)
+
+        # Load a pre-trained SentenceTransformer model to calculate embeddings
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+
+        # Generate embeddings for banners and job titles
+        banner_embeddings = model.encode(banners)
+        title_embeddings = model.encode(df['cleaned_titles'].tolist())
+
+        # Compute cosine similarity between titles and banners to assign banners
+        assigned_banners = []
+        for embedding in title_embeddings:
+            similarities = cosine_similarity([embedding], banner_embeddings)
+            best_match_idx = np.argmax(similarities)
+            assigned_banners.append(banners[best_match_idx])
+
+        # Add the assigned banners to the DataFrame
+        df['assigned_banner'] = assigned_banners
+        if 'external_apply_link' not in df.columns:
+            print("Warning: 'external_apply_link' column not found. Assigning default values.")
+            df['external_apply_link'] = None
+
+        # === Convert DataFrame to UI-Friendly Format === #
+        # Format jobs_data to be used by the UI
+        self.jobs_data = [
+            {"title": row['positionName'],
+             "Company": row['company'],
+             "Salary": row['salary'],
+             "Location": row['location'],
+             "Description": row['description'],
+             "Rating": row['rating'],
+             "Apply Here": row['external_apply_link'],
+             "Job_ID": row['id'],
+             "assigned_banner": row['assigned_banner']
+             }
+            for _, row in df.iterrows()
+        ]
+
         # Create the pie chart
         plt.figure(figsize=(6, 4))
         title_counts.plot.pie(autopct='%1.1f%%', startangle=140, colormap='tab20', fontsize=10)
