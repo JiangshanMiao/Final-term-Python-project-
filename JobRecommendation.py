@@ -593,7 +593,7 @@ class JobRecommendationScreen(Screen):
                     filtered_jobs.append(job)
 
             # Step 4: Update filtered job list or show "No Results"
-            self.filtered_jobs_data = filtered_jobs if filtered_jobs else [{"assigned_banner": "No Results", "Description": ""}]
+            self.filtered_jobs_data = filtered_jobs if filtered_jobs else [{"title": "No Results", "Description": ""}]
             self.populate_job_list(filtered=True)
 
         # Close the floating window
